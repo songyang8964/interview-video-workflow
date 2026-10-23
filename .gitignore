@@ -1,0 +1,7 @@
+yt-dlp.exe
+__pycache__/
+*.pyc
+??/
+*.mp4
+*.webm
+
