@@ -1,6 +1,8 @@
 """逐字稿覆盖检查：确认 transcript.md 的每一段都已写进文章，或明确排除并写明原因。
 
-用法：python -P coverage.py <transcript.md> <覆盖表.csv> [--article 成稿.md]
+用法：python -P coverage.py <transcript.md> <覆盖表.csv ...> [--article 成稿.md]
+  覆盖表可以给多个（或用通配符，如 "核对\覆盖表_*.csv"）：每章的核对各写一份，最后一起检查。
+  章与章交界处同一段可以登记两次；只要有一行是"写入/合并"就算写进了文章。
 
 覆盖表.csv（UTF-8，表头固定）：
   时间戳,章节,处理,说明
@@ -11,6 +13,7 @@
 
 检查项：
   ERROR  逐字稿段落没有出现在覆盖表中；覆盖表里有逐字稿中不存在的时间戳；处理值非法；合并或排除缺少说明；
+         同一份表里同一时间戳出现两次；
          --article 时，"写入/合并"的章节在成稿中找不到对应标题
   WARN   排除时长超过全片的 8%；单条排除超过 3 分钟（长段排除最容易藏着"嫌它太尖锐"的遗漏）
 退出码：有 ERROR 时为 1。
@@ -34,29 +37,41 @@ def main():
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
     ap.add_argument('transcript', type=Path)
-    ap.add_argument('table', type=Path)
+    ap.add_argument('tables', nargs='+')
     ap.add_argument('--article', type=Path)
     a = ap.parse_args()
 
     stamps = [m.group(1) for line in a.transcript.read_text(encoding='utf-8-sig').splitlines() if (m := TS.match(line))]
     if not stamps:
         sys.exit('逐字稿中没有 [HH:MM:SS] 段落')
-    with a.table.open(encoding='utf-8-sig', newline='') as f:
-        rows = list(csv.DictReader(f))
+    paths = []
+    for pat in a.tables:
+        p = Path(pat)
+        hits = sorted(p.parent.glob(p.name)) if any(c in p.name for c in '*?[') else [p]
+        paths += [h for h in hits if h.is_file()]
+    if not paths:
+        sys.exit(f'找不到覆盖表：{a.tables}')
 
     errors, warns = [], []
     table = {}
-    for i, r in enumerate(rows, 2):
-        t = (r.get('时间戳') or '').strip()
-        act = (r.get('处理') or '').strip()
-        note = (r.get('说明') or '').strip()
-        if t in table:
-            errors.append(f'第 {i} 行：时间戳 {t} 重复')
-        table[t] = (r.get('章节') or '').strip(), act, note
-        if act not in VALID:
-            errors.append(f'第 {i} 行：处理"{act}"不是 写入/合并/排除')
-        elif act != '写入' and not note:
-            errors.append(f'第 {i} 行：{t} {act}，但没有写说明')
+    for path in paths:
+        seen = set()
+        with path.open(encoding='utf-8-sig', newline='') as f:
+            for i, r in enumerate(csv.DictReader(f), 2):
+                t = (r.get('时间戳') or '').strip()
+                act = (r.get('处理') or '').strip()
+                note = (r.get('说明') or '').strip()
+                where = f'{path.name} 第 {i} 行'
+                if t in seen:
+                    errors.append(f'{where}：时间戳 {t} 在同一份表里重复')
+                seen.add(t)
+                if act not in VALID:
+                    errors.append(f'{where}：处理"{act}"不是 写入/合并/排除')
+                elif act != '写入' and not note:
+                    errors.append(f'{where}：{t} {act}，但没有写说明')
+                # 跨表重复（章节交界）：有任何一行写入/合并，就以它为准
+                if t not in table or (table[t][1] == '排除' and act in ('写入', '合并')):
+                    table[t] = (r.get('章节') or '').strip(), act, note
 
     stamp_set = set(stamps)
     missing = [t for t in stamps if t not in table]

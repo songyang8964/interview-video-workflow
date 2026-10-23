@@ -2,7 +2,7 @@
 
 给 AI 一个 YouTube 英文访谈链接，它会帮你整理出一篇中文长文：内容完整，读起来像中文作者写的，还配有原视频的截图。
 
-不需要会写代码。装好以后，你只要在 Codex 里发一句话。
+不需要会写代码。装好以后，你只要在 **Claude Code** 或 **Codex** 里发一句话。
 
 ## 能帮你做什么
 
@@ -20,7 +20,9 @@
 你需要：
 
 - 一台 Windows 10 或 Windows 11 电脑；
-- **Codex 桌面版**：到 OpenAI 官网下载，安装后用 ChatGPT 账号登录；
+- 下面两个 AI 助手里的**任意一个**（两个都装也可以）：
+  - **Claude Code**：Claude 桌面版里的 Code 功能，或者命令行版的 Claude Code。到 Anthropic 官网下载，用 Claude 账号登录；
+  - **Codex 桌面版**：到 OpenAI 官网下载，用 ChatGPT 账号登录；
 - 能正常打开 YouTube 和 GitHub 的网络。
 
 其他要用到的软件（Python、FFmpeg、yt-dlp），安装脚本会自动帮你装。
@@ -46,34 +48,42 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 1. 检查电脑上有没有 Python 和 FFmpeg，缺什么装什么。这一步可能要几分钟，期间如果弹出"是否允许此应用更改设备"，点**是**；
 2. 在"文档"文件夹里新建一个叫 `访谈长文` 的工作文件夹，以后所有文章都放在这里；
-3. 把写作规则安装到 Codex；
+3. 看你电脑上装了哪个助手，就把写作规则装给哪个，两个都装了就两边都装；
 4. 最后逐项检查，每一项前面显示 `[好]` 或 `[缺]`。
 
 全部显示 `[好]`，就装好了。如果有 `[缺]`，先**关掉这个窗口，重新打开一个**，再运行一次同样的命令。刚装好的软件，要新开的窗口才认得出来。
 
-想把工作文件夹放在别处，比如 D 盘，就改用这一行：
+两个常用的变化：
 
 ```
-powershell -ExecutionPolicy Bypass -File install.ps1 -WorkDir "D:\访谈长文"
+powershell -ExecutionPolicy Bypass -File install.ps1 -WorkDir "D:\访谈长文"     工作文件夹放到 D 盘
+powershell -ExecutionPolicy Bypass -File install.ps1 -Target claude             只装给 Claude Code（只装给 Codex 写 codex）
 ```
 
-## 第三步：在 Codex 里打开工作文件夹
+## 第三步：在助手里打开工作文件夹
 
-1. **完全退出 Codex**，再重新打开。只关窗口不够，要从任务栏右下角的图标里退出，Codex 才会加载新装的写作规则。
-2. 在 Codex 里选择打开文件夹，选 `文档\访谈长文`（或者你在第二步自己指定的位置）。
+先**完全退出**你的助手，再重新打开，让它加载新装的写作规则。只关窗口不够，要从任务栏右下角的图标里退出。
+
+- **Claude 桌面版**：切到 **Code**，选择文件夹 `文档\访谈长文`；
+- **Claude Code 命令行**：在 PowerShell 里进入 `文档\访谈长文`，输入 `claude`；
+- **Codex**：选择打开文件夹 `文档\访谈长文`。
+
+如果你在第二步换了位置，就打开你指定的那个文件夹。
 
 ## 第四步：发一句话
 
-把下面这句话里的链接换成你要整理的访谈，发给 Codex：
+把下面这句话里的链接换成你要整理的访谈，发给助手：
 
 ```
 用 interview-video 技能把这个访谈整理成中文长文：https://www.youtube.com/watch?v=xxxxxxxxxxx
 ```
 
+在 Claude Code 里，也可以直接输入 `/interview-video <链接>`。
+
 接下来会发生这些事：
 
-1. **Codex 请求联网**：下载视频和字幕需要联网，弹出确认时点允许。
-2. **它停下来给你看提纲**：分析完访谈后，它会列出打算怎么分章、每章讲什么，以及人名、术语打算怎么翻译。觉得没问题就回复"确认"；想调整就直接说，比如"第三章和第四章合并"。
+1. **助手请求运行命令、联网**：下载视频和字幕需要联网，弹出确认时点允许。
+2. **它停下来给你看提纲**：分析完访谈后，它会列出打算怎么分章、每章讲什么，以及哪些人名、术语的译法拿不准。觉得没问题就回复"确认"；想调整就直接说，比如"第三章和第四章合并"。
 3. **它一路写完**：写作、润色、核对、配图都会自动完成。访谈越长，用时越久，期间你可以去做别的事。
 4. **它给你一份报告**：文章在哪、多少字、配了几张图、检查有没有通过，以及改动最大的几处修改前后对比，方便你快速抽查。
 
@@ -98,7 +108,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -WorkDir "D:\访谈长文"
 
 ## 常用说法
 
-直接发给 Codex 就行：
+直接发给助手就行，Claude Code 和 Codex 都一样：
 
 | 你想做的事 | 这样说 |
 |---|---|
@@ -106,7 +116,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -WorkDir "D:\访谈长文"
 | 润色得更细（更费额度） | `用 interview-video 技能处理：<链接> --deep-polish` |
 | 指定文章的文件名 | `用 interview-video 技能处理：<链接> Snowden_JRE1368` |
 | 中途断了，接着做 | `继续 interview-video 流程：素材\Snowden_JRE1368` |
-| 对已有的文章再挑一遍毛病 | `对 素材\Snowden_JRE1368 再跑一遍盲读挑刺，合理的意见改进文章，然后重跑三道闸门` |
+| 对已有的文章再挑一遍毛病 | `对 素材\Snowden_JRE1368 再做一遍盲读挑刺，合理的意见改进文章，然后重跑三道闸门` |
 
 ## 遇到问题
 
@@ -116,17 +126,17 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -WorkDir "D:\访谈长文"
 **安装脚本说没有 winget，没法自动安装**
 打开 Microsoft Store，搜索"应用安装程序"并安装或更新，然后重新运行安装脚本。
 
-**Codex 说找不到 interview-video 技能**
-完全退出 Codex 再打开。如果还不行，看看 `C:\Users\你的用户名\.codex\skills\` 里有没有 `interview-video` 文件夹；没有的话，重新运行安装脚本。
+**助手说找不到 interview-video 技能**
+完全退出助手再打开。如果还不行，看看技能文件夹里有没有 `interview-video`：Claude Code 是 `C:\Users\你的用户名\.claude\skills\`，Codex 是 `C:\Users\你的用户名\.codex\skills\`。没有的话，重新运行安装脚本。
 
 **下载视频失败**
-对 Codex 说："更新 yt-dlp 后重试下载"。如果还是失败，说："下载时加上 -CookiesFrom chrome"。这会借用你 Chrome 浏览器里的 YouTube 登录状态。
+对助手说："更新 yt-dlp 后重试下载"。如果还是失败，说："下载时加上 -CookiesFrom chrome"。这会借用你 Chrome 浏览器里的 YouTube 登录状态。
 
-**提示"模型不支持"**
+**Codex 提示"模型不支持"**
 对 Codex 说："盲读改用 gpt-5.6-terra 模型重跑"。
 
 **额度用完，或者窗口关了**
-已经做完的部分都保存着。重新打开 Codex，发一句"继续 interview-video 流程：素材\这期的短名"，它会从断开的地方接着做。
+已经做完的部分都保存着。重新打开助手，发一句"继续 interview-video 流程：素材\这期的短名"，它会从断开的地方接着做。
 
 ## 它是怎么保证质量的
 
@@ -136,6 +146,8 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -WorkDir "D:\访谈长文"
 - **能数的交给程序**：翻译腔句式、破折号、评判性用词、有没有哪段访谈没写进去，都由脚本逐条检查，不靠 AI 自觉；
 - **换一双眼睛读**：每章交给一个完全没看过英文原文的 AI 审读，专挑读着别扭、看不懂的地方。
 
+读原文、写作、看图这些重活，都交给一个个独立的子任务去做，负责调度的那个对话始终保持轻量。这样既省额度，规则也不会在长对话里被冲淡。
+
 更详细的设计思路、检查规则和脚本用法，见 [docs/设计说明.md](docs/设计说明.md)。
 
 ## 局限
@@ -143,16 +155,16 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -WorkDir "D:\访谈长文"
 - YouTube 自动字幕不标说话人。谁说了哪句话靠上下文判断，拿不准的地方会在核对时专门确认，但仍可能出错。
 - 意思译反、把话安在错的人头上，这类错误程序查不出来，只能靠逐句对照。重要的文章，建议自己抽查几段。
 - 如果访谈是视频连线、全程只有一个镜头，能用的画面很少，通常每章只配一张图。
-- 整个过程会消耗 ChatGPT 的使用额度，访谈越长消耗越多。
+- 整个过程会消耗 Claude 或 ChatGPT 的使用额度，访谈越长消耗越多。
 
 ## 文件说明
 
 ```
 install.ps1          一键安装脚本
-skills\              写作规则（安装时复制到 Codex）
+skills\              写作规则（安装时复制到 Claude Code 或 Codex）
 tools\               下载、检查、截图用的小程序（安装时复制到工作文件夹）
 docs\设计说明.md      设计思路、检查规则、脚本单独用法
-docs\项目规则.md      写进工作文件夹 AGENTS.md 的项目规则
+docs\项目规则.md      项目规则（安装时写进工作文件夹的 CLAUDE.md 或 AGENTS.md）
 ```
 
 ## 致谢
