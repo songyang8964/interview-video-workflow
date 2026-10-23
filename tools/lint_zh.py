@@ -1,6 +1,7 @@
 """访谈长文中文质量检查：翻译腔、AI 味、评判性措辞、英文残留、长句等。
 
-用法：python -P lint_zh.py <文章.md> [--json 输出.json] [--max 30]
+用法：python -P lint_zh.py <文章.md> [--json 输出.json] [--max 30] [--full]
+  --full 用于合并后的成稿：另查开头和结尾的原始链接、文末"复核说明"。
   ERROR = 违反硬规则（禁用词、评判性措辞、每章双语金句超过 2 条），必须改到 0。
   WARN  = 可疑写法，润色时逐条判断：改，或说明保留理由。
 退出码：有 ERROR 时为 1。
@@ -62,7 +63,7 @@ def cjk_len(s):
     return len(re.findall(r'[一-鿿]', s))
 
 
-def lint(path: Path):
+def lint(path: Path, full=False):
     lines = path.read_text(encoding='utf-8-sig').splitlines()
     # 章节标题层级：出现至少 3 次的最浅标题层级（有的文章用 ##，有的用 ###）
     levels = Counter(len(m.group(1)) for l in lines if (m := re.match(r'^(#{2,4})\s', l)))
@@ -143,6 +144,26 @@ def lint(path: Path):
         if n > 2:
             issues.append(dict(level='ERROR', rule='双语金句超额', line=0, chapter=ch, snippet=f'本章 {n} 条双语金句', hint='每章最多 2 条，其余改为中文转述'))
 
+    # 结构（interview-writing 的硬性结构要求）
+    heads = [(i, l[ch_level + 1:].strip()) for i, l in enumerate(lines, 1) if l.startswith('#' * ch_level + ' ')]
+    for i, h in heads:
+        bare = re.sub(r'^[一二三四五六七八九十百\d]+[、.．]\s*', '', h)
+        if cjk_len(bare) < 8 and not re.search(r'结尾|附注|复核|核查|写在最后', bare):
+            issues.append(dict(level='WARN', rule='小标题过泛', line=i, chapter=h, snippet=h,
+                               hint='小标题 = 讨论了什么 + 核心结论，如"Google 的技术被别人先商业化了"'))
+    if full:
+        body = '\n'.join(lines)
+        first_head = heads[0][0] if heads else len(lines)
+        if not any(re.search(r'youtube\.com|youtu\.be', l) for l in lines[:first_head]):
+            issues.append(dict(level='ERROR', rule='缺来源', line=1, chapter='（开头）', snippet='开头没有原始视频链接',
+                               hint='开头三件事：受访者是谁、聊了什么、访谈来源（节目、日期、链接）'))
+        if not any(re.search(r'youtube\.com|youtu\.be', l) for l in lines[-40:]):
+            issues.append(dict(level='ERROR', rule='缺来源', line=len(lines), chapter='（结尾）', snippet='结尾没有原始视频链接',
+                               hint='结尾附上原始链接'))
+        if not re.search(r'复核说明', body):
+            issues.append(dict(level='ERROR', rule='缺复核说明', line=len(lines), chapter='（结尾）', snippet='文末没有"复核说明"',
+                               hint='文末写明润色、审查各改了多少处，以及未解决项'))
+
     per_k = dashes / max(zh_chars, 1) * 1000
     stats = dict(zh_chars=zh_chars, dashes=dashes, dashes_per_1000=round(per_k, 2), bilingual_quotes=dict(bilingual))
     if per_k > 4:
@@ -157,8 +178,9 @@ def main():
     ap.add_argument('file', type=Path)
     ap.add_argument('--json', type=Path)
     ap.add_argument('--max', type=int, default=30, help='每条规则最多打印几处')
+    ap.add_argument('--full', action='store_true', help='成稿模式：另查开头/结尾来源链接、复核说明')
     args = ap.parse_args()
-    issues, stats = lint(args.file)
+    issues, stats = lint(args.file, args.full)
 
     by_rule = Counter((x['level'], x['rule']) for x in issues)
     print(f"{args.file.name}：中文 {stats['zh_chars']} 字，破折号每千字 {stats['dashes_per_1000']}")
