@@ -167,7 +167,9 @@ def cmd_insert(a):
         rel = f"{Path(item['path']).parent.name}/{item['file']}"
         if rel in text:
             continue
-        idx = next((i for i, p in enumerate(paras) if item['anchor'] in p), None)
+        anchor = (item.get('anchor') or '').strip()
+        # 空锚点会匹配任意段落，把图插到开头；按"找不到锚点"处理，等定稿后补上
+        idx = next((i for i, p in enumerate(paras) if anchor in p), None) if anchor else None
         if idx is None:
             missing.append(item['file'])
             continue

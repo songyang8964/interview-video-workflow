@@ -3,6 +3,7 @@
 用法：python -P coverage.py <transcript.md> <覆盖表.csv ...> [--article 成稿.md]
   覆盖表可以给多个（或用通配符，如 "核对\覆盖表_*.csv"）：每章的核对各写一份，最后一起检查。
   章与章交界处同一段可以登记两次；只要有一行是"写入/合并"就算写进了文章。
+  "章节"列填章标题或章号（01、2）都可以。
 
 覆盖表.csv（UTF-8，表头固定）：
   时间戳,章节,处理,说明
@@ -105,9 +106,19 @@ def main():
         for t in stamps:
             if t in table and table[t][1] in ('写入', '合并') and table[t][0]:
                 ch_secs[table[t][0]] = ch_secs.get(table[t][0], 0) + dur[t]
+        # 章节列填的是章号（"01""3"）时，对应到第 N 个章标题：取出现至少 3 次的最浅标题层级
+        lv_count = {}
+        for _, lv, _ in heads:
+            lv_count[lv] = lv_count.get(lv, 0) + 1
+        ch_level = min((lv for lv, n in lv_count.items() if n >= 3 and lv >= 2), default=2)
+        ch_heads = [h for h in heads if h[1] == ch_level and not re.search(r'附注|复核|写在最后', h[2])]
         density = {}
         for ch, secs in ch_secs.items():
-            hit = next((h for h in heads if ch in h[2] or h[2] in ch), None)
+            if re.fullmatch(r'\d{1,3}', ch):
+                k = int(ch)
+                hit = ch_heads[k - 1] if 0 < k <= len(ch_heads) else None
+            else:
+                hit = next((h for h in heads if ch in h[2] or h[2] in ch), None)
             if not hit:
                 errors.append(f'覆盖表中的章节"{ch}"在成稿标题中找不到')
                 continue

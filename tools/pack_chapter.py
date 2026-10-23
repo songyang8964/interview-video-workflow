@@ -1,7 +1,9 @@
 """把一章的写作材料预先拼成一个文件，写作者读一次就够，不用分几次去查。
 
-用法：python -P pack_chapter.py <素材目录> [章号 ...]
+用法：python -P pack_chapter.py <素材目录> [章号 ...] [--card 规则卡.md ...]
+  --card 可以给多张，原样放在每份材料的最前面，子 agent 读这一个文件就能开工，不必再另找规则。
   不写章号就打包全部章节。每章输出 <素材目录>/chapters/NN.brief.md，内容依次是：
+    0. 规则卡（给了 --card 时）
     1. 本章提纲（从 分析素材包.md 中截取），附候选金句原文
     2. 本章时间范围内的逐字稿段落
     3. 上一章正文的最后一段（上一章还没写时省略）
@@ -74,10 +76,17 @@ def last_paragraph(path):
 
 def main():
     sys.stdout.reconfigure(encoding='utf-8')
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    cards = []
+    while '--card' in args:
+        i = args.index('--card')
+        cards.append(Path(args[i + 1]))
+        del args[i:i + 2]
+    if not args:
         sys.exit(__doc__)
-    folder = Path(sys.argv[1])
-    wanted = {int(x) for x in sys.argv[2:]}
+    folder = Path(args[0])
+    wanted = {int(x) for x in args[1:]}
+    card_text = '\n\n'.join(c.read_text(encoding='utf-8-sig').strip() for c in cards)
     pack = (folder / '分析素材包.md').read_text(encoding='utf-8-sig')
     transcript = (folder / 'transcript.md').read_text(encoding='utf-8-sig')
     glossary_path = folder / '译名表.md'
@@ -92,7 +101,8 @@ def main():
         if wanted and n not in wanted:
             continue
         prev = last_paragraph(out_dir / f'{n - 1:02}.md') if n > 1 else ''
-        parts = [f'# 第 {n:02} 章写作材料：{title}', f'时间范围：[{start}–{end}]', '',
+        parts = [card_text, '', '---', ''] if card_text else []
+        parts += [f'# 第 {n:02} 章写作材料：{title}', f'时间范围：[{start}–{end}]', '',
                  '## 1. 本章提纲', '', body, '']
         if quotes:
             parts += ['### 候选金句（提纲里的编号对应这里）', '', quotes, '']
