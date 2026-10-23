@@ -82,7 +82,10 @@ def cmd_grab(a):
             q = quality.score(tmp)
             if best is None or q['quality'] > best[2]['quality']:
                 best = (tmp, frame, q)
-            if not q['reject'] and q['quality'] >= 0.9:
+            # 只有画质不合格时才找替代帧。不能"挑最清晰的"：访谈画面普遍偏暗、得分低，
+            # 那样会漂到片尾字幕卡这类明亮但无关的画面（斯诺登篇 00:24:04 曾漂到 00:24:07 的订阅卡）
+            if not q['reject']:
+                best = (tmp, frame, q)
                 break
         tmp, frame, q = best
         target = assets / item['file']
