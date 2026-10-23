@@ -1,103 +1,180 @@
-# 访谈长文工作流
+# interview-video-workflow
 
-把 YouTube 上的英文访谈，变成一篇读起来像中文作者写的长文，配上原视频截图。你只需要在 Claude Code 或 Codex 里贴一个链接。
+将 YouTube 英文访谈转换为中文访谈长文的 AI 工作流，支持 Claude Code 和 Codex。
 
-## 和直接翻译有什么不同
+输入一个视频链接，自动完成字幕下载、内容分析、逐章写作、中文润色、忠实度核对和原视频配图，输出一篇带截图的 Markdown 长文。
 
-机器翻译和一般的 AI 总结，常见三个毛病：句子贴着英文走，最尖锐的段落被悄悄略过，编辑忍不住替读者下判断。这套工作流就是冲着这三点做的。下面几句是实际改稿时的例子：
+## 功能特性
 
-| 直译 | 这里的写法 |
-|---|---|
-| 他的叙事起点是二战结束后的英国 | 洛从二战结束后的英国讲起 |
-| 被误导的利他主义 | 好心办坏事的利他主义 |
-| 这一工程的下游后果 | 这一系列政策造成的后果 |
-| 我变成了可选项 | 已经可以没有我了 |
+- **全流程自动化**：下载 → 逐字稿 → 分析提纲 → 写作 → 盲读润色 → 核对 → 配图 → 终检
+- **内容完整性检查**：逐字稿每一段都必须登记去向，脚本自动核对，防止内容被遗漏
+- **中文质量检查**：脚本检测翻译腔句式、破折号密度、评判性措辞、编造的神态描写等
+- **盲读审校**：由未接触英文原文的 AI 实例审读中文稿，找出不自然的表达
+- **原视频配图**：按正文内容从视频中截取画面，并核对图文是否一致
+- **断点续跑**：中间产物均保存在磁盘上，中断后从未完成的步骤继续
+- **按时长自适应**：30 分钟以内由单个会话完成；更长的访谈拆分给多个子 agent 并行处理
 
-内容一段都不漏。逐字稿的每一段都要登记去向：写进了文章，还是因为是广告、寒暄才没写，脚本会逐段核对。受访者的说法和公开资料有出入时，在文末附注里说明，正文不插话。
+## 环境要求
 
-一段 24 分钟的访谈，实测约 10 分钟跑完，得到一篇 6,500 字、3 章、配 3 张截图的长文，外加附注和一份复核说明。
+- Windows 10 / 11
+- [Claude Code](https://claude.com/claude-code) 或 [Codex](https://openai.com/codex) 桌面版（任选其一）
+- Python 3.11+、FFmpeg、yt-dlp（安装脚本会自动安装）
 
-## 三步上手
+## 安装
 
-需要一台 Windows 10/11 电脑，并装好下面任意一个 AI 助手，登录账号：
+```bash
+git clone https://github.com/songyang8964/interview-video-workflow.git
+cd interview-video-workflow
+```
 
-- **Claude**：Claude 桌面版（用里面的 Code 功能），或者命令行版 Claude Code
-- **Codex**：Codex 桌面版
+或在页面上点击 **Code → Download ZIP** 下载并解压。
 
-**1. 下载。** 在本页面上方点绿色的 **Code** 按钮，选 **Download ZIP**，解压到任意位置。
+然后运行安装脚本（也可以直接双击 `安装.cmd`）：
 
-**2. 安装。** 双击解压出来的 `安装.cmd`。它会自动装好需要的软件（Python、FFmpeg、yt-dlp），在"文档"里建一个 `访谈长文` 文件夹，把写作规则装进你的 AI 助手。中途如果弹出"是否允许更改设备"，点"是"。最后每一项都显示 `[好]` 就装好了；有 `[缺]` 的话，关掉窗口再双击一次。
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
 
-**3. 开写。** 完全退出你的 AI 助手（从任务栏右下角退出），重新打开，选择打开 `文档\访谈长文` 文件夹，然后发一句：
+安装脚本会：
+
+1. 检查并安装 Python、FFmpeg（通过 winget）和 Python 依赖 `pillow`、`numpy`
+2. 创建工作目录（默认为 `文档\访谈长文`），复制 `tools/` 并下载 `yt-dlp.exe`
+3. 检测已安装的 AI 助手，将技能复制到 `~/.claude/skills` 和/或 `~/.codex/skills`
+4. 在工作目录生成项目规则文件 `CLAUDE.md` / `AGENTS.md`（已存在则不覆盖）
+
+可选参数：
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `-WorkDir` | 工作目录 | `文档\访谈长文` |
+| `-Target` | 安装目标：`auto` / `claude` / `codex` / `both` | `auto` |
+| `-SkipDeps` | 跳过依赖安装，只复制文件 | — |
+
+安装完成后，重启 AI 助手以加载技能。
+
+## 使用方法
+
+在 Claude Code 或 Codex 中打开工作目录，输入：
 
 ```
 用 interview-video 技能把这个访谈整理成中文长文：https://www.youtube.com/watch?v=xxxxxxxxxxx
 ```
 
-## 发出去之后
-
-助手先下载字幕和视频，这时会请你允许它运行命令、联网，点允许。
-
-分析完访谈，它会停下来给你看提纲：打算分几章、每章讲什么，以及哪几个人名、术语的译法拿不准。没问题就回"确认"，想改就直接说，比如"第二章和第三章合并"。不想停，就在那句话末尾加上 `--auto`。
-
-之后写作、润色、核对、配图一路自动完成。结束时你会收到一份报告：文章在哪、多少字、配了几张图、检查是否通过，还有改动最大的几处修改前后对比，几分钟就能抽查完。
-
-成品在工作文件夹里：
+Claude Code 中也可以使用斜杠命令：
 
 ```
-访谈长文\
-  Snowden_JRE1368_访谈长文.md          文章
-  Snowden_JRE1368_访谈长文_assets\     文章里的截图
-  素材\Snowden_JRE1368\                逐字稿、分析和检查记录，一般不用管
+/interview-video https://www.youtube.com/watch?v=xxxxxxxxxxx
 ```
 
-文章是 Markdown 格式，用 [Typora](https://typora.io/)、[Obsidian](https://obsidian.md/) 或 [VS Code](https://code.visualstudio.com/) 打开能看到图片，用记事本只能看到文字。发给别人时，把文章和同名的 `_assets` 文件夹一起带上。
+默认情况下，分析完成后会暂停，展示提纲供确认；确认后自动完成剩余步骤，最后输出报告（文章路径、字数、配图数、检查结果、主要修改对照）。
 
-## 常用说法
+### 选项
 
-| 想做什么 | 发这句 |
+| 选项 | 说明 |
 |---|---|
-| 全程不停 | `用 interview-video 技能处理：<链接> --auto` |
-| 润色得更细，多花一些额度 | `用 interview-video 技能处理：<链接> --deep-polish` |
-| 自己定文件名 | `用 interview-video 技能处理：<链接> Snowden_JRE1368` |
-| 中途断了，接着做 | `继续 interview-video 流程：素材\Snowden_JRE1368` |
-| 给写好的文章再挑一遍毛病 | `对 素材\Snowden_JRE1368 再做一遍盲读挑刺，合理的意见改进文章，然后重跑三道闸门` |
+| `--auto` | 全自动运行，不在提纲处暂停 |
+| `--deep-polish` | 对重点段落使用对抗式打磨（需要 [adversarial-polish](https://github.com/jimliu/illustrated-agent-skills) 技能，安装脚本会自动下载） |
+| `<slug>` | 指定文件名，如 `Snowden_JRE1368` |
 
-`--auto` 这类开关是写给 AI 看的，直接用中文说"全自动跑完"也一样。
-
-## 出了问题
-
-**双击 `安装.cmd` 后提示没有 winget。** 打开 Microsoft Store，搜索"应用安装程序"，安装或更新后再双击一次。
-
-**助手说找不到 interview-video 技能。** 先确认是从任务栏右下角完全退出后重新打开的。还不行就再双击一次 `安装.cmd`。
-
-**下载失败。** 对助手说"更新 yt-dlp 后重试"；还不行就说"下载时加上 -CookiesFrom chrome"，借用 Chrome 里的 YouTube 登录状态。
-
-**额度用完了，或者窗口被关了。** 做完的部分都存在磁盘上。重新打开助手，发"继续 interview-video 流程：素材\这期的文件名"，会从断开的地方接着做。
-
-**Codex 提示"模型不支持"。** 对它说"盲读改用 gpt-5.6-terra 模型重跑"。
-
-## 它是怎么做到的
-
-写、改、查分成三步，各看各的材料：写的时候照中文要点写，不对着英文逐句译；改的时候只看中文；查的时候才逐句对照英文，只管有没有漏、有没有走样。
-
-能计数的规则交给脚本，不靠 AI 自觉。翻译腔句式、破折号密度、评判性用词、编造的神态动作、有没有哪段访谈没写进去，都由脚本逐条检查。文章要通过三道检查才算完成。
-
-每章还会交给一个完全没看过英文原文的 AI 读一遍，专门挑读着别扭、看不懂的地方。受访者自己用的比喻和例子单独列成清单，润色时只改措辞，不许删。
-
-这些规则大多来自此前十几篇长文的返工记录。30 分钟以内的访谈由一个对话从头做到尾；更长的访谈拆成几个子任务分头做，免得几万字的原文一直压在一个对话里。设计细节和各个脚本的单独用法，见 [docs/设计说明.md](docs/设计说明.md)。
-
-## 做不到的
-
-YouTube 自动字幕不标谁在说话，只能靠上下文判断，拿不准的地方会专门核对，但仍可能出错。意思译反、张冠李戴这类错误脚本查不出来，要靠逐句对照，重要的文章建议自己抽查几段。视频连线、全程只有一个镜头的访谈，能用的画面很少，通常每章只配一张图。整个过程会消耗 Claude 或 ChatGPT 的使用额度，访谈越长用得越多。
-
-## 仓库里有什么
+示例：
 
 ```
-安装.cmd / install.ps1    安装（双击前者即可；后者可带参数，如 -WorkDir "D:\访谈长文"、-Target claude）
-skills\                   写作规则，安装时装进 AI 助手
-tools\                    下载、检查、截图用的小程序，安装时复制到工作文件夹
-docs\                     设计说明，以及写进工作文件夹 CLAUDE.md / AGENTS.md 的项目规则
+用 interview-video 技能处理：<链接> --auto
+用 interview-video 技能处理：<链接> Snowden_JRE1368 --deep-polish
+继续 interview-video 流程：素材\Snowden_JRE1368
 ```
 
-`interview-analysis`、`interview-writing`、`writing-style` 三个技能的初版来自 [jimliu/illustrated-agent-skills](https://github.com/jimliu/illustrated-agent-skills)。截图取帧和画质检查的代码移植自 [video-notes](https://github.com/songyang8964/video-notes)。
+### 输出
+
+```
+访谈长文/
+├── <slug>_访谈长文.md          # 成稿
+├── <slug>_访谈长文_assets/     # 截图
+└── 素材/<slug>/                # 逐字稿、分析素材包、核对记录等中间产物
+```
+
+成稿为 Markdown 格式，建议使用 Typora、Obsidian 或 VS Code 查看。
+
+## 工作原理
+
+```mermaid
+flowchart LR
+    A[下载字幕和视频] --> B[分析与提纲]
+    B --> C[逐章写作]
+    B -.并行.-> G[配图]
+    C --> D[盲读审校]
+    D --> E[润色]
+    E --> F[对照原文核对]
+    F --> H[合并与终检]
+    G --> H
+```
+
+1. **写作、润色、核对分离**：写作依据中文提纲，润色只看中文，核对时才对照英文原文，避免译文贴着英文句式走。
+2. **规则脚本化**：可计数的规则由 `lint_zh.py` 和 `coverage.py` 检查，成稿必须通过三项检查：
+   - `lint_zh.py --full`：ERROR 为 0，破折号每千字不超过 4 个
+   - `coverage.py`：逐字稿每段均已登记，无漏项
+   - 配图：每张图都已核对原图
+3. **盲读隔离**：审读者不接触英文原文。Claude Code 中使用独立子 agent，Codex 中通过 `blind_read.ps1` 为每章启动独立的 `codex exec` 进程。
+4. **按时长选择模式**：短访谈的逐字稿篇幅小，由单个会话完成更快、更省；长访谈拆分给子 agent，避免原文长期占用主会话上下文。
+
+实测数据与设计取舍见 [docs/设计说明.md](docs/设计说明.md)。
+
+## 目录结构
+
+```
+.
+├── 安装.cmd                  # 双击安装
+├── install.ps1               # 安装脚本
+├── skills/
+│   ├── interview-video/      # 主流程（入口）
+│   │   └── references/       # 历史错误清单、润色卡、核对卡、配图卡
+│   ├── interview-analysis/   # 访谈分析
+│   ├── interview-writing/    # 访谈写作（含写作卡、翻译腔对照表）
+│   └── writing-style/        # 中文写作风格规范
+├── tools/
+│   ├── fetch.ps1             # 下载元数据、字幕、视频，生成逐字稿
+│   ├── transcript.py         # json3 字幕转为带时间戳的逐字稿
+│   ├── lint_zh.py            # 中文质量检查
+│   ├── coverage.py           # 逐字稿覆盖与章节密度检查
+│   ├── frames.py             # 缩略图拼板、取原帧、插图
+│   ├── pack_chapter.py       # 打包每章写作材料
+│   ├── merge.py              # 合并章节与文末附注
+│   ├── report.py             # 汇总修改、审读与配图记录
+│   ├── blind_read.ps1        # 盲读（Codex）
+│   └── blind_read_prompt.md
+└── docs/
+    ├── 设计说明.md
+    └── 项目规则.md
+```
+
+各脚本的单独用法见 [docs/设计说明.md](docs/设计说明.md#脚本单独使用)。
+
+## 常见问题
+
+**提示没有 winget**
+在 Microsoft Store 中安装或更新"应用安装程序"，然后重新运行安装脚本。
+
+**AI 助手找不到 interview-video 技能**
+确认已完全退出并重启 AI 助手；检查 `~/.claude/skills/interview-video` 或 `~/.codex/skills/interview-video` 是否存在，不存在则重新运行安装脚本。
+
+**视频下载失败**
+运行 `tools\yt-dlp.exe -U` 更新 yt-dlp；仍失败时，让助手下载时加上 `-CookiesFrom chrome`。
+
+**任务中断**
+发送 `继续 interview-video 流程：素材\<slug>`，从未完成的步骤继续。
+
+**Codex 盲读提示模型不支持**
+为 `blind_read.ps1` 指定其他模型，如 `-Model gpt-5.6-terra`。
+
+## 局限
+
+- YouTube 自动字幕不区分说话人，说话人归属依赖上下文判断，可能出错
+- 意思译反、说话人错置等问题无法由脚本检测，依赖逐句核对，重要稿件建议人工抽查
+- 单机位或视频连线的访谈可用画面有限
+- 运行会消耗 AI 助手的使用额度，与访谈时长成正比
+
+## 致谢
+
+- `interview-analysis`、`interview-writing`、`writing-style` 基于 [jimliu/illustrated-agent-skills](https://github.com/jimliu/illustrated-agent-skills) 扩展
+- 取帧与画质检查代码移植自 [video-notes](https://github.com/songyang8964/video-notes)
+- 视频下载使用 [yt-dlp](https://github.com/yt-dlp/yt-dlp)
