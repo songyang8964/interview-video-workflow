@@ -44,7 +44,22 @@ PATTERNS = [
     ('WARN', '翻译腔', r'(?:让|使)(?:他|她|我|我们|他们|人们)?(?:感到|觉得)', '"make sb feel"直译：直接写感受'),
     ('WARN', 'AI 味', r'不仅仅是.{1,20}更是|不是.{1,12}而是.{1,12}更是|这不仅.{1,15}更', '排比式拔高，访谈实录里少用'),
     ('WARN', 'AI 味', r'深刻(?:地)?(?:揭示|反映|体现)|发人深省|引人深思|耐人寻味|令人动容', '替读者抒情，删掉'),
+    # —— 以下规则来自历次返工记录（见 interview-video/references/历史错误清单.md） ——
+    ('ERROR', '评判性措辞', r'万能钥匙|利用了?(?:这个)?平台|个人化(?:的)?诠释|嘴硬|黑子|老生常谈|陈词滥调|偷换概念|自相矛盾',
+     '暗中贬低受访者（Rupert、DHH 两篇都因此返工）：改成中性陈述'),
+    ('ERROR', '元叙述', r'字幕|逐字稿|自动转录|转录稿|整理成文|整理者|笔者|本文(?:将|会|试图)|(?:本|原|这段|该)(?:视频|节目)中',
+     '正文不写整理过程（泽连斯基一篇因"字幕中不完整"被要求删）：直接写内容；需要说明的放文末附注'),
+    ('WARN', '编造细节', r'笑着说|笑了笑|顿了顿|停顿了?一下|停了一下|叹了口气|沉默(?:了)?片刻|眼眶|哽咽|声音(?:低|颤)|语气(?:变得|逐渐)|让人停顿|第一次公开',
+     '神态、动作和"首次披露"最容易编造（泽连斯基一篇删过"笑着说""他停了一下"）：逐字稿或画面没有依据就删'),
+    ('WARN', 'AI 味', r'(?:构成|带来)了.{0,10}(?:重量|分量)|值得(?:关注|留意)的(?:信号|是)|有几个.{0,6}值得|定海神针|一锤定音|振聋发聩|掷地有声',
+     '总结腔和用力过猛的词：改成平实的叙述'),
+    ('WARN', '口语填充', r'我是说|你知道(?:吗|[，,])|对吧|说实话|(?:^|[，。“"])就是这样[。，！”"]|老实说|嗯|好吧|你懂的|怎么说呢',
+     '英文口头禅逐字带进中文（泽连斯基一篇"就是这样"出现 11 次）：大多删掉'),
+    ('WARN', '自问自答', r'为什么[？?]\s*因为', '"Why? Because…"句式，一章最多留一处'),
 ]
+# 文末附注、复核说明里允许谈整理过程和字幕
+APPENDIX_ONLY_OK = {'元叙述', '编造细节'}
+APPENDIX_HEAD = re.compile(r'附注|复核|资料说明|核查|来源说明|参考资料')
 
 ENGLISH_RUN = re.compile(r"[A-Za-z][A-Za-z'’\-]*(?:[\s,]+[A-Za-z][A-Za-z'’\-]*){5,}")
 QUOTE = re.compile(r'[“"]([^”"]{1,400})[”"]')
@@ -68,10 +83,11 @@ def lint(path: Path, full=False):
     # 章节标题层级：出现至少 3 次的最浅标题层级（有的文章用 ##，有的用 ###）
     levels = Counter(len(m.group(1)) for l in lines if (m := re.match(r'^(#{2,4})\s', l)))
     ch_level = min((lv for lv, n in levels.items() if n >= 3), default=2)
-    issues, chapter, in_code = [], '（开头）', False
+    issues, chapter, in_code, in_appendix = [], '（开头）', False, False
     bilingual = Counter()
     zh_chars = 0
     dashes = 0
+    feichang = 0
     seen_paren_en = defaultdict(list)
 
     def add(level, rule, lineno, snippet, hint):
@@ -83,16 +99,18 @@ def lint(path: Path, full=False):
             continue
         if in_code or not raw.strip():
             continue
-        if raw.startswith('#' * ch_level + ' '):
-            chapter = raw[ch_level + 1:].strip()
-            continue
         if raw.startswith('#'):
+            if APPENDIX_HEAD.search(raw):
+                in_appendix = True
+            if raw.startswith('#' * ch_level + ' '):
+                chapter = raw[ch_level + 1:].strip()
             continue
         line = strip_inline(raw)
         is_quote_block = raw.lstrip().startswith('>')
         is_caption = raw.strip().startswith('*') and raw.strip().endswith('*') and '原视频' in raw
         zh_chars += cjk_len(line)
         dashes += line.count('——')
+        feichang += line.count('非常')
 
         # 英文金句块：中文行 + 英文行；英文行计数，不算残留
         if is_quote_block:
@@ -105,6 +123,8 @@ def lint(path: Path, full=False):
 
         quoted = [m.span() for m in QUOTE.finditer(line)]
         for level, rule, pat, hint in PATTERNS:
+            if rule in APPENDIX_ONLY_OK and (in_appendix or is_caption or 'http' in raw):
+                continue  # 文末附注、图注、来源行可以谈字幕和整理过程
             for m in re.finditer(pat, line):
                 ctx = line[max(0, m.start() - 15): m.end() + 15]
                 # 受访者原话里的口头禅不算编辑违规，降为提醒
@@ -165,10 +185,20 @@ def lint(path: Path, full=False):
                                hint='文末写明润色、审查各改了多少处，以及未解决项'))
 
     per_k = dashes / max(zh_chars, 1) * 1000
-    stats = dict(zh_chars=zh_chars, dashes=dashes, dashes_per_1000=round(per_k, 2), bilingual_quotes=dict(bilingual))
+    fc_k = feichang / max(zh_chars, 1) * 1000
+    stats = dict(zh_chars=zh_chars, dashes=dashes, dashes_per_1000=round(per_k, 2), feichang_per_1000=round(fc_k, 2),
+                 bilingual_quotes=dict(bilingual))
     if per_k > 4:
-        issues.append(dict(level='WARN', rule='破折号密度', line=0, chapter='', snippet=f'每千字 {per_k:.1f} 个"——"',
-                           hint='目标每千字 ≤ 4 个；破折号插入语是英文句法，多数可改逗号或拆句'))
+        # 成稿时为硬错误：用户多次因破折号过多要求返工，不接受"系列一贯风格"之类的理由
+        issues.append(dict(level='ERROR' if full else 'WARN', rule='破折号密度', line=0, chapter='', snippet=f'每千字 {per_k:.1f} 个"——"',
+                           hint='每千字 ≤ 4 个；破折号插入语是英文句法，改逗号、冒号、括号或拆句'))
+    if fc_k > 1.0:
+        issues.append(dict(level='WARN', rule='"非常"过多', line=0, chapter='', snippet=f'"非常" {feichang} 次（每千字 {fc_k:.1f}）',
+                           hint='删掉一半，或换成具体说法'))
+    body_heads = [h for _, h in heads if not APPENDIX_HEAD.search(h)]
+    if full and len(body_heads) >= 4 and sum(bilingual.values()) < len(body_heads) // 2:
+        issues.append(dict(level='WARN', rule='金句太少', line=0, chapter='', snippet=f'{len(body_heads)} 章只有 {sum(bilingual.values())} 条双语金句',
+                           hint='每章 1–2 条：挑有画面感、能独立传播的原话（Rupert 一篇被指出金句太少）'))
     return issues, stats
 
 

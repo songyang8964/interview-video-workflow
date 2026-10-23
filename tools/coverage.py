@@ -84,11 +84,29 @@ def main():
         run_start, run_len = None, 0
 
     if a.article:
-        heads = [l.lstrip('#').strip() for l in a.article.read_text(encoding='utf-8-sig').splitlines() if l.startswith('#')]
-        chapters = {table[t][0] for t in table if table[t][1] in ('写入', '合并') and table[t][0]}
-        for ch in sorted(chapters):
-            if not any(ch in h or h in ch for h in heads):
+        lines = a.article.read_text(encoding='utf-8-sig').splitlines()
+        heads = [(i, len(l) - len(l.lstrip('#')), l.lstrip('#').strip()) for i, l in enumerate(lines) if l.startswith('#')]
+        ch_secs = {}
+        for t in stamps:
+            if t in table and table[t][1] in ('写入', '合并') and table[t][0]:
+                ch_secs[table[t][0]] = ch_secs.get(table[t][0], 0) + dur[t]
+        density = {}
+        for ch, secs in ch_secs.items():
+            hit = next((h for h in heads if ch in h[2] or h[2] in ch), None)
+            if not hit:
                 errors.append(f'覆盖表中的章节"{ch}"在成稿标题中找不到')
+                continue
+            i, level, _ = hit
+            end = next((j for j, lv, _ in heads if j > i and lv <= level), len(lines))
+            chars = len(re.findall(r'[一-鿿]', '\n'.join(lines[i + 1:end])))
+            density[ch] = (chars / max(secs / 60, 0.5), chars, secs)
+        # 章节密度：每分钟访谈写成多少字。明显低于中位数的章节，多半有整段被概括掉
+        if len(density) >= 3:
+            med = sorted(v[0] for v in density.values())[len(density) // 2]
+            print(f'章节密度中位数：每分钟访谈 {med:.0f} 字')
+            for ch, (d, chars, secs) in density.items():
+                if d < med * 0.5 and secs >= 120:
+                    warns.append(f'"{ch}"偏薄：{secs // 60} 分钟访谈只写了 {chars} 字（每分钟 {d:.0f} 字，不到中位数一半），逐段对照逐字稿查遗漏')
 
     print(f'逐字稿 {len(stamps)} 段；已登记 {len(stamps) - len(missing)} 段；排除 {len(excluded)} 段，约 {ex_total // 60} 分钟（占 {ex_total / max(total, 1):.1%}）')
     for t, d, note in excluded:
