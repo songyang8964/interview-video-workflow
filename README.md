@@ -76,6 +76,8 @@ tools/
   lint_zh.py       中文质量检查（有 ERROR 时退出码为 1；--full 用于成稿）
   coverage.py      逐字稿逐段覆盖检查（覆盖表.csv）
   frames.py        sheet 联系表 / grab 取原帧并过画质 / insert 按锚点插图
+  blind_read.ps1   盲读挑刺：每章起一个独立的 codex exec 进程，只给它中文正文
+  blind_read_prompt.md   盲读提示词
 docs/
   项目规则.md      放进访谈长文目录的项目说明（偏向与完整性规则）
 ```
@@ -86,6 +88,17 @@ docs/
 2. 把 `skills/` 下的四个目录复制到你的 AI 编程助手的技能目录。
 3. 可选：安装对抗式打磨技能：`npx skills add jimliu/illustrated-agent-skills --skill adversarial-polish`
 4. 把 `tools/` 复制到你存放访谈长文的目录，并把 `docs/项目规则.md` 的内容加入该目录的项目说明文件。
+5. 技能文件里的 `<技能目录>` 替换成你实际的技能目录路径。
+
+### 在 Codex 中使用
+
+1. 把 `skills/` 下的四个目录复制到 `%USERPROFILE%\.codex\skills\`，并把其中的 `<技能目录>` 替换为 `C:\Users\<你>\.codex\skills`。
+2. 在访谈长文目录下新建 `AGENTS.md`，写入 `docs/项目规则.md` 的内容。Codex 读的是这个文件。
+3. 在 Codex 中打开该目录，说"用 interview-video 技能处理这个链接：<链接> --auto"。
+4. 和其他环境有三处不同：
+   - **盲读挑刺**：运行 `tools\blind_read.ps1 -Dir 素材\<slug>`。它为每一章起一个独立的 `codex exec` 进程：只读沙箱、空工作目录、全新上下文。审读者看不到英文原文，正是盲读需要的隔离。脚本会依次在 PATH 和 `%USERPROFILE%\.codex\.sandbox-bin\codex.exe`（Codex 桌面版自带的命令行）里找 codex；默认模型是 `gpt-5.6-sol`，可用 `-Model` 换。
+   - **并行写作**：支持子 agent 就并行写；不支持就逐章写，每章前重读写作卡。
+   - **下载要联网**：沙箱会请求批准；也可以先手动运行 `fetch.ps1`，流程会从第 2 步续跑。
 
 ## 脚本单独使用
 
@@ -103,6 +116,9 @@ python -P tools\coverage.py 素材\<slug>\transcript.md 素材\<slug>\覆盖表.
 python -P tools\frames.py sheet  素材\<slug>\video.mp4 素材\<slug>\sheets --end 02:30:00 --step 30
 python -P tools\frames.py grab   素材\<slug>\video.mp4 素材\<slug>\配图计划.json <slug>_访谈长文_assets
 python -P tools\frames.py insert <slug>_访谈长文.md 素材\<slug>\配图计划.json
+
+# 盲读挑刺（每章一个独立的 codex exec 进程）
+powershell -ExecutionPolicy Bypass -File tools\blind_read.ps1 -Dir 素材\<slug>
 ```
 
 ## 致谢
