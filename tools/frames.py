@@ -131,54 +131,83 @@ def cmd_grab(a):
     assets.mkdir(parents=True, exist_ok=True)
     duration = media.probe(video)['duration_ms']
     plan = json.loads(plan_path.read_text(encoding='utf-8-sig'))
-    work = Path(tempfile.mkdtemp(prefix='frames_'))
-    for item in plan:
-        base = parse_ts(item['seconds'])
-        best = None
-        for off in (0, 0.5, -0.5, 1, -1, 2, -2, 3, -3):
-            ms = int((base + off) * 1000)
-            if not 0 <= ms < duration:
+    out_of_range = []
+    with tempfile.TemporaryDirectory(prefix='frames_') as work_dir:
+        work = Path(work_dir)
+        for item in plan:
+            base = parse_ts(item['seconds'])
+            best = None
+            for off in (0, 0.5, -0.5, 1, -1, 2, -2, 3, -3):
+                ms = int((base + off) * 1000)
+                if not 0 <= ms < duration:
+                    continue
+                tmp = work / f'{ms}.jpg'
+                frame = media.extract_frame(video, ms, tmp, duration)
+                q = quality.score(tmp)
+                if best is None or q['quality'] > best[2]['quality']:
+                    best = (tmp, frame, q)
+                # 只有画质不合格时才找替代帧。不能"挑最清晰的"：访谈画面普遍偏暗、得分低，
+                # 那样会漂到片尾字幕卡这类明亮但无关的画面（斯诺登篇 00:24:04 曾漂到 00:24:07 的订阅卡）
+                if not q['reject']:
+                    best = (tmp, frame, q)
+                    break
+            if best is None:
+                # 时间点（含 ±3 秒）都在视频之外：多半是时间写错了，跳过这张，其余照常取
+                out_of_range.append(f"{item['file']}（{item['seconds']}）")
                 continue
-            tmp = work / f'{ms}.jpg'
-            frame = media.extract_frame(video, ms, tmp, duration)
-            q = quality.score(tmp)
-            if best is None or q['quality'] > best[2]['quality']:
-                best = (tmp, frame, q)
-            # 只有画质不合格时才找替代帧。不能"挑最清晰的"：访谈画面普遍偏暗、得分低，
-            # 那样会漂到片尾字幕卡这类明亮但无关的画面（斯诺登篇 00:24:04 曾漂到 00:24:07 的订阅卡）
-            if not q['reject']:
-                best = (tmp, frame, q)
-                break
-        tmp, frame, q = best
-        target = assets / item['file']
-        Image.open(tmp).convert('RGB').save(target, quality=90)
-        item.update(load_source_frame=frame, quality=q, path=str(target), sha256=media.sha256(target))
-        flag = f"  ⚠ {q['reason']}" if q['reject'] else ''
-        print(f"{item['file']}: {fmt(frame['actual_ms'] / 1000)} quality={q['quality']:.2f}{flag}")
+            tmp, frame, q = best
+            target = assets / item['file']
+            with Image.open(tmp) as img:
+                img.convert('RGB').save(target, quality=90)
+            item.update(load_source_frame=frame, quality=q, path=str(target), sha256=media.sha256(target))
+            flag = f"  ⚠ {q['reason']}" if q['reject'] else ''
+            print(f"{item['file']}: {fmt(frame['actual_ms'] / 1000)} quality={q['quality']:.2f}{flag}")
     plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding='utf-8')
+    if out_of_range:
+        print(f'时间点超出视频时长（{fmt(duration / 1000)}），未取图：{out_of_range}')
+        return 1
+    return 0
 
 
 def cmd_insert(a):
     md, plan = Path(a.md), json.loads(Path(a.plan).read_text(encoding='utf-8-sig'))
     text = md.read_text(encoding='utf-8-sig')
     paras = text.split('\n\n')
-    missing = []
+    missing, ambiguous, ungrabbed, inserted = [], [], [], 0
     for item in plan:
+        if not item.get('path'):
+            ungrabbed.append(item['file'])   # 还没 grab 过（或 grab 时跳过了）
+            continue
         rel = f"{Path(item['path']).parent.name}/{item['file']}"
         if rel in text:
             continue
         anchor = (item.get('anchor') or '').strip()
         # 空锚点会匹配任意段落，把图插到开头；按"找不到锚点"处理，等定稿后补上
-        idx = next((i for i, p in enumerate(paras) if anchor in p), None) if anchor else None
-        if idx is None:
+        # 已插入的图片块和图注不参与匹配，免得锚点碰巧落在别的图注里
+        hits = [i for i, p in enumerate(paras)
+                if anchor and anchor in p and not p.lstrip().startswith('![') and not re.fullmatch(r'\*[^*\n]+\*', p.strip())]
+        if not hits:
             missing.append(item['file'])
             continue
+        if len(hits) > 1:
+            # 锚点出现在多个段落：插哪儿都可能错，宁可不插，让人换一段更长、只出现一次的原文
+            ambiguous.append(f"{item['file']}（{len(hits)} 处）")
+            continue
+        idx = hits[0]
         block = f"![{item.get('alt', '')}]({rel})\n\n*{item['caption']}*"
         paras.insert(idx if item.get('before') else idx + 1, block)
         text = '\n\n'.join(paras)
+        inserted += 1
     md.write_text('\n\n'.join(paras), encoding='utf-8')
-    print(f'已插入 {len(plan) - len(missing)} 张' + (f'；找不到锚点：{missing}' if missing else ''))
-    return 1 if missing else 0
+    msg = f'已插入 {inserted} 张'
+    if missing:
+        msg += f'；找不到锚点：{missing}'
+    if ambiguous:
+        msg += f'；锚点不唯一，未插入（换一段只出现一次的原文）：{ambiguous}'
+    if ungrabbed:
+        msg += f'；还没取图（先运行 grab）：{ungrabbed}'
+    print(msg)
+    return 1 if missing or ambiguous or ungrabbed else 0
 
 
 def main():

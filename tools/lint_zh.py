@@ -214,7 +214,7 @@ def main():
 
     by_rule = Counter((x['level'], x['rule']) for x in issues)
     print(f"{args.file.name}：中文 {stats['zh_chars']} 字，破折号每千字 {stats['dashes_per_1000']}")
-    print('汇总：' + '；'.join(f'{lv} {r} {n}' for (lv, r), n in sorted(by_rule.items())) or '无问题')
+    print('汇总：' + ('；'.join(f'{lv} {r} {n}' for (lv, r), n in sorted(by_rule.items())) or '无问题'))
     printed = Counter()
     for x in sorted(issues, key=lambda x: (x['level'] != 'ERROR', x['rule'], x['line'])):
         key = (x['level'], x['rule'])

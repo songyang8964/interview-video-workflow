@@ -44,6 +44,11 @@ function Test-Cmd($name, [string[]]$argv) {
     try { & $name @argv *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
 }
 
+function Test-Python311 {
+    # 所有脚本都用 python -P 运行，这个参数从 3.11 才有
+    Test-Cmd python @('-c', 'import sys; sys.exit(sys.version_info < (3, 11))')
+}
+
 function Install-WithWinget($id, $label) {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Bad "没有 winget，无法自动安装 $label。请手动安装后重新运行本脚本"
@@ -83,8 +88,11 @@ Write-Host ("安装给：" + (($agents | ForEach-Object { $_.Name }) -join '、'
 # ---------------------------------------------------------------- 1. 依赖
 if (-not $SkipDeps) {
     Step '1/5 检查依赖'
-    if (Test-Cmd python @('--version')) { Ok ("Python：" + (python --version 2>&1)) }
-    else { Install-WithWinget 'Python.Python.3.12' 'Python 3.12' }
+    if (Test-Python311) { Ok ("Python：" + (python --version 2>&1)) }
+    else {
+        if (Test-Cmd python @('--version')) { Bad ("现有 " + (python --version 2>&1) + " 太旧：脚本用到 python -P，需要 3.11 以上") }
+        Install-WithWinget 'Python.Python.3.12' 'Python 3.12'
+    }
 
     if (Test-Cmd ffmpeg @('-version')) { Ok 'FFmpeg 已安装' }
     else { Install-WithWinget 'Gyan.FFmpeg' 'FFmpeg' }
@@ -168,7 +176,9 @@ foreach ($a in $agents) {
 Step '5/5 检查结果'
 Refresh-Path
 $allOk = $true
-if (Test-Cmd python @('--version')) { Ok 'Python' } else { Bad 'Python 未就绪：安装后重新打开 PowerShell 再运行本脚本'; $allOk = $false }
+if (Test-Python311) { Ok ("Python：" + (python --version 2>&1)) }
+elseif (Test-Cmd python @('--version')) { Bad ("命令行里的 python 是 " + (python --version 2>&1) + "，需要 3.11 以上：卸载旧版，或把新版 Python 在 PATH 里排到前面，然后重新打开 PowerShell 再运行本脚本"); $allOk = $false }
+else { Bad 'Python 未就绪：安装后重新打开 PowerShell 再运行本脚本'; $allOk = $false }
 if (Test-Cmd ffmpeg @('-version')) { Ok 'FFmpeg' } else { Bad 'FFmpeg 未就绪：安装后重新打开 PowerShell 再运行本脚本'; $allOk = $false }
 if (Test-Cmd python @('-c', 'import PIL, numpy')) { Ok 'pillow、numpy' } else { Bad 'Python 包未就绪：运行 python -m pip install --user pillow numpy'; $allOk = $false }
 if (Test-Path $ytdlp) { Ok 'yt-dlp' } else { Bad 'yt-dlp.exe 不在 tools 里'; $allOk = $false }
